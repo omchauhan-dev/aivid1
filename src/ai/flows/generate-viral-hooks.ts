@@ -34,7 +34,7 @@ Return the result as a valid JSON object matching this structure:
 }`;
 
   const completion = await openrouter.chat.completions.create({
-    model: "google/gemini-flash-1.5",
+    model: "openai/gpt-4o-mini",
     messages: [
       { role: "system", content: "You are a helpful assistant that outputs JSON." },
       { role: "user", content: prompt }
