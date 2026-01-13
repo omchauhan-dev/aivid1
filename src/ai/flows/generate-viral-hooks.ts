@@ -23,12 +23,10 @@ const GenerateViralHooksOutputSchema = z.object({
 export type GenerateViralHooksOutput = z.infer<typeof GenerateViralHooksOutputSchema>;
 
 export async function generateViralHooks(input: GenerateViralHooksInput): Promise<GenerateViralHooksOutput> {
-  const prompt = `You are an expert in creating viral content for social media. Your goal is to generate attention-grabbing hooks for reels based on a given topic.
+  const prompt = `Topic: ${input.topic}
 
-Topic: ${input.topic}
-
-Generate 5 different hooks that are likely to go viral.
-Return the result as a valid JSON object matching this structure:
+Generate 5 viral hooks.
+Return JSON:
 {
   "hooks": ["hook1", "hook2", ...]
 }`;
@@ -36,7 +34,7 @@ Return the result as a valid JSON object matching this structure:
   const completion = await openrouter.chat.completions.create({
     model: "openai/gpt-4o-mini",
     messages: [
-      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "system", content: "You are a viral content expert. Output JSON only." },
       { role: "user", content: prompt }
     ],
     response_format: { type: "json_object" }

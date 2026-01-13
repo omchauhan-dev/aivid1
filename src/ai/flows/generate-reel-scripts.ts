@@ -24,13 +24,11 @@ const GenerateReelScriptOutputSchema = z.object({
 export type GenerateReelScriptOutput = z.infer<typeof GenerateReelScriptOutputSchema>;
 
 export async function generateReelScript(input: GenerateReelScriptInput): Promise<GenerateReelScriptOutput> {
-  const prompt = `You are a creative reel script writer. Generate a script for a reel based on the provided subject matter, reel length, and language.
-
-Subject Matter: ${input.subjectMatter}
-Reel Length: ${input.reelLength}
+  const prompt = `Subject: ${input.subjectMatter}
+Length: ${input.reelLength}
 Language: ${input.language}
 
-Return the result as a valid JSON object matching this structure:
+Generate a script. Return JSON:
 {
   "script": "The full script text..."
 }`;
@@ -38,7 +36,7 @@ Return the result as a valid JSON object matching this structure:
   const completion = await openrouter.chat.completions.create({
     model: "openai/gpt-4o-mini",
     messages: [
-      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "system", content: "You are a creative script writer. Output JSON only." },
       { role: "user", content: prompt }
     ],
     response_format: { type: "json_object" }

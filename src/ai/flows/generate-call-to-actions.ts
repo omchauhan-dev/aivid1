@@ -24,12 +24,10 @@ export type GenerateCallToActionsOutput = z.infer<typeof GenerateCallToActionsOu
 export async function generateCallToActions(
   input: GenerateCallToActionsInput
 ): Promise<GenerateCallToActionsOutput> {
-  const prompt = `You are an expert in creating engaging content for social media reels. Based on the reel content provided, generate a list of compelling calls to action to encourage viewers to interact with the reel.
+  const prompt = `Reel Content: ${input.reelContent}
 
-Reel Content: ${input.reelContent}
-
-Generate at least 5 calls to action.
-Return the result as a valid JSON object matching this structure:
+Generate 5 compelling calls to action.
+Return JSON:
 {
   "callToActions": ["cta1", "cta2", ...]
 }`;
@@ -37,7 +35,7 @@ Return the result as a valid JSON object matching this structure:
   const completion = await openrouter.chat.completions.create({
     model: "openai/gpt-4o-mini",
     messages: [
-      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "system", content: "You are a social media expert. Output JSON only." },
       { role: "user", content: prompt }
     ],
     response_format: { type: "json_object" }

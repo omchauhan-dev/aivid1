@@ -39,11 +39,11 @@ export type RewriteContentInStyleOutput = z.infer<
 export async function rewriteContentInStyle(
   input: RewriteContentInStyleInput
 ): Promise<RewriteContentInStyleOutput> {
-  const prompt = `Rewrite the following content in a ${input.style} style:
+  const prompt = `Rewrite in ${input.style} style:
 
 ${input.content}
 
-Return the result as a valid JSON object matching this structure:
+Return JSON:
 {
   "rewrittenContent": "The rewritten text..."
 }`;
@@ -51,7 +51,7 @@ Return the result as a valid JSON object matching this structure:
   const completion = await openrouter.chat.completions.create({
     model: "openai/gpt-4o-mini",
     messages: [
-      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "system", content: "You are an expert editor. Output JSON only." },
       { role: "user", content: prompt }
     ],
     response_format: { type: "json_object" }

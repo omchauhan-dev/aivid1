@@ -31,12 +31,10 @@ export type GenerateCaptionsAndHashtagsOutput = z.infer<typeof GenerateCaptionsA
 export async function generateCaptionsAndHashtags(
   input: GenerateCaptionsAndHashtagsInput
 ): Promise<GenerateCaptionsAndHashtagsOutput> {
-  const prompt = `You are an expert social media manager. You are generating captions and hashtags for a reel based on the theme or message provided by the user.
+  const prompt = `Theme/Message: ${input.themeOrMessage}
 
-Theme/Message: ${input.themeOrMessage}
-
-Generate 3 emotion-based captions and 5 trending hashtags related to the reel.
-Return the result as a valid JSON object matching this structure:
+Generate 3 emotion-based captions and 5 trending hashtags.
+Return JSON:
 {
   "captions": ["caption1", ...],
   "hashtags": ["#tag1", ...]
@@ -45,7 +43,7 @@ Return the result as a valid JSON object matching this structure:
   const completion = await openrouter.chat.completions.create({
     model: "openai/gpt-4o-mini",
     messages: [
-      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "system", content: "You are a social media expert. Output JSON only." },
       { role: "user", content: prompt }
     ],
     response_format: { type: "json_object" }
