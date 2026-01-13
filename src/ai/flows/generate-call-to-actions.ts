@@ -47,7 +47,8 @@ Return JSON:
   }
 
   try {
-    const result = JSON.parse(content);
+    const cleanedContent = content.replace(/```json\n?|```/g, '').trim();
+    const result = JSON.parse(cleanedContent);
     return GenerateCallToActionsOutputSchema.parse(result);
   } catch (error) {
     console.error("Failed to parse CTA output:", content, error);

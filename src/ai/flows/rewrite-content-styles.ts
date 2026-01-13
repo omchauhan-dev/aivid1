@@ -63,7 +63,8 @@ Return JSON:
   }
 
   try {
-    const result = JSON.parse(content);
+    const cleanedContent = content.replace(/```json\n?|```/g, '').trim();
+    const result = JSON.parse(cleanedContent);
     return RewriteContentInStyleOutputSchema.parse(result);
   } catch (error) {
     console.error("Failed to parse rewrite output:", content, error);

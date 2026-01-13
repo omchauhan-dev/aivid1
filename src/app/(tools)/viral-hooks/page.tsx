@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Loader2, Sparkles, Terminal } from 'lucide-react';
+import { experimental_useObject as useObject } from '@ai-sdk/react';
 
-import { getViralHooksAction } from './actions';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -20,10 +19,15 @@ const formSchema = z.object({
   }),
 });
 
+const HooksOutputSchema = z.object({
+  hooks: z.array(z.string()),
+});
+
 export default function ViralHooksPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [hooks, setHooks] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { object, submit, isLoading, error: aiError } = useObject({
+    api: '/api/generate-viral-hooks',
+    schema: HooksOutputSchema,
+  });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -32,21 +36,13 @@ export default function ViralHooksPage() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
-    setError(null);
-    setHooks([]);
-
-    const result = await getViralHooksAction(values);
-
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setHooks(result.data || []);
-    }
-    
-    setIsLoading(false);
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    submit(values);
   }
+
+  const hooks = object?.hooks || [];
+  // Ensure we have an array of strings, filtering out undefineds if partial parsing happens oddly (rare but possible)
+  const validHooks = hooks.filter((h): h is string => typeof h === 'string');
 
   return (
     <div>
@@ -86,15 +82,15 @@ export default function ViralHooksPage() {
         </form>
       </Form>
 
-      {error && (
+      {aiError && (
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>An error occurred while generating hooks. Please try again.</AlertDescription>
         </Alert>
       )}
 
-      <OutputList items={hooks} isLoading={isLoading} count={5} />
+      <OutputList items={validHooks} isLoading={isLoading && validHooks.length === 0} count={5} />
     </div>
   );
 }

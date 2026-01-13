@@ -48,7 +48,8 @@ Generate a script. Return JSON:
   }
 
   try {
-    const result = JSON.parse(content);
+    const cleanedContent = content.replace(/```json\n?|```/g, '').trim();
+    const result = JSON.parse(cleanedContent);
     return GenerateReelScriptOutputSchema.parse(result);
   } catch (error) {
     console.error("Failed to parse reel script output:", content, error);

@@ -55,7 +55,8 @@ Return JSON:
   }
 
   try {
-    const result = JSON.parse(content);
+    const cleanedContent = content.replace(/```json\n?|```/g, '').trim();
+    const result = JSON.parse(cleanedContent);
     return GenerateCaptionsAndHashtagsOutputSchema.parse(result);
   } catch (error) {
     console.error("Failed to parse captions/hashtags output:", content, error);
