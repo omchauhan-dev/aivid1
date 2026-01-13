@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -24,9 +25,14 @@ const HooksOutputSchema = z.object({
 });
 
 export default function ViralHooksPage() {
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
   const { object, submit, isLoading, error: aiError } = useObject({
     api: '/api/generate-viral-hooks',
     schema: HooksOutputSchema,
+    onError: (error) => {
+      setGenerationError(error.message || 'An error occurred during generation.');
+    },
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -37,6 +43,7 @@ export default function ViralHooksPage() {
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
+    setGenerationError(null);
     submit(values);
   }
 
@@ -82,11 +89,13 @@ export default function ViralHooksPage() {
         </form>
       </Form>
 
-      {aiError && (
+      {(aiError || generationError) && (
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>An error occurred while generating hooks. Please try again.</AlertDescription>
+          <AlertDescription>
+            {generationError || 'An error occurred while generating hooks. Please try again.'}
+          </AlertDescription>
         </Alert>
       )}
 
