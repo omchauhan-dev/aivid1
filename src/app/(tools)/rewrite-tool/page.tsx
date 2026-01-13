@@ -15,18 +15,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { OutputText } from '@/components/output-text';
 
+const styleValues = ['aggressive', 'calm', 'emotional', 'storytelling', 'authoritative'] as const;
+
 const styles = [
   { value: 'aggressive', label: 'Aggressive' },
   { value: 'calm', label: 'Calm' },
   { value: 'emotional', label: 'Emotional' },
   { value: 'storytelling', label: 'Storytelling' },
   { value: 'authoritative', label: 'Authoritative' },
-] as const;
+];
 
 
 const formSchema = z.object({
   content: z.string().min(10, 'Please enter some content to rewrite.'),
-  style: z.enum(styles.map(s => s.value) as [string, ...string[]]),
+  style: z.enum(styleValues),
 });
 
 export default function RewriteToolPage() {

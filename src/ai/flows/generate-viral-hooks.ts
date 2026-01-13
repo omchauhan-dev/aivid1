@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * @fileOverview This file defines a Genkit flow for generating viral hooks for reels.
+ * @fileOverview This file defines a flow for generating viral hooks for reels.
  *
  * It includes:
  * - `generateViralHooks`: A function to generate attention-grabbing hooks for reels.
@@ -9,8 +9,8 @@
  * - `GenerateViralHooksOutput`: The output type for the `generateViralHooks` function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { openrouter } from '@/ai/openrouter';
+import { z } from 'zod';
 
 const GenerateViralHooksInputSchema = z.object({
   topic: z.string().describe('The topic of the reel.'),
@@ -23,29 +23,35 @@ const GenerateViralHooksOutputSchema = z.object({
 export type GenerateViralHooksOutput = z.infer<typeof GenerateViralHooksOutputSchema>;
 
 export async function generateViralHooks(input: GenerateViralHooksInput): Promise<GenerateViralHooksOutput> {
-  return generateViralHooksFlow(input);
-}
+  const prompt = `You are an expert in creating viral content for social media. Your goal is to generate attention-grabbing hooks for reels based on a given topic.
 
-const prompt = ai.definePrompt({
-  name: 'generateViralHooksPrompt',
-  input: {schema: GenerateViralHooksInputSchema},
-  output: {schema: GenerateViralHooksOutputSchema},
-  prompt: `You are an expert in creating viral content for social media. Your goal is to generate attention-grabbing hooks for reels based on a given topic.
+Topic: ${input.topic}
 
-  Topic: {{{topic}}}
+Generate 5 different hooks that are likely to go viral.
+Return the result as a valid JSON object matching this structure:
+{
+  "hooks": ["hook1", "hook2", ...]
+}`;
 
-  Generate 5 different hooks that are likely to go viral. Return the hooks as a JSON array of strings.
-  `,
-});
+  const completion = await openrouter.chat.completions.create({
+    model: "google/gemini-flash-1.5",
+    messages: [
+      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "user", content: prompt }
+    ],
+    response_format: { type: "json_object" }
+  });
 
-const generateViralHooksFlow = ai.defineFlow(
-  {
-    name: 'generateViralHooksFlow',
-    inputSchema: GenerateViralHooksInputSchema,
-    outputSchema: GenerateViralHooksOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+  const content = completion.choices[0].message.content;
+  if (!content) {
+    throw new Error("No content generated");
   }
-);
+
+  try {
+    const result = JSON.parse(content);
+    return GenerateViralHooksOutputSchema.parse(result);
+  } catch (error) {
+    console.error("Failed to parse viral hooks output:", content, error);
+    throw new Error("Failed to parse generated hooks.");
+  }
+}

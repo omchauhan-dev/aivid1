@@ -8,8 +8,8 @@
  * - RewriteContentInStyleOutput - The return type for the rewriteContentInStyle function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { openrouter } from '@/ai/openrouter';
+import { z } from 'zod';
 
 const RewriteContentInStyleInputSchema = z.object({
   content: z.string().describe('The content to be rewritten.'),
@@ -39,24 +39,34 @@ export type RewriteContentInStyleOutput = z.infer<
 export async function rewriteContentInStyle(
   input: RewriteContentInStyleInput
 ): Promise<RewriteContentInStyleOutput> {
-  return rewriteContentInStyleFlow(input);
-}
+  const prompt = `Rewrite the following content in a ${input.style} style:
 
-const rewriteContentInStylePrompt = ai.definePrompt({
-  name: 'rewriteContentInStylePrompt',
-  input: {schema: RewriteContentInStyleInputSchema},
-  output: {schema: RewriteContentInStyleOutputSchema},
-  prompt: `Rewrite the following content in a {{{style}}} style:\n\n{{{content}}}`,
-});
+${input.content}
 
-const rewriteContentInStyleFlow = ai.defineFlow(
-  {
-    name: 'rewriteContentInStyleFlow',
-    inputSchema: RewriteContentInStyleInputSchema,
-    outputSchema: RewriteContentInStyleOutputSchema,
-  },
-  async input => {
-    const {output} = await rewriteContentInStylePrompt(input);
-    return output!;
+Return the result as a valid JSON object matching this structure:
+{
+  "rewrittenContent": "The rewritten text..."
+}`;
+
+  const completion = await openrouter.chat.completions.create({
+    model: "google/gemini-flash-1.5",
+    messages: [
+      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "user", content: prompt }
+    ],
+    response_format: { type: "json_object" }
+  });
+
+  const content = completion.choices[0].message.content;
+  if (!content) {
+    throw new Error("No content generated");
   }
-);
+
+  try {
+    const result = JSON.parse(content);
+    return RewriteContentInStyleOutputSchema.parse(result);
+  } catch (error) {
+    console.error("Failed to parse rewrite output:", content, error);
+    throw new Error("Failed to parse generated content.");
+  }
+}

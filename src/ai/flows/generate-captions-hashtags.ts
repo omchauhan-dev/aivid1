@@ -8,8 +8,8 @@
  * - GenerateCaptionsAndHashtagsOutput - The return type for the generateCaptionsAndHashtags function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { openrouter } from '@/ai/openrouter';
+import { z } from 'zod';
 
 const GenerateCaptionsAndHashtagsInputSchema = z.object({
   themeOrMessage: z
@@ -31,29 +31,36 @@ export type GenerateCaptionsAndHashtagsOutput = z.infer<typeof GenerateCaptionsA
 export async function generateCaptionsAndHashtags(
   input: GenerateCaptionsAndHashtagsInput
 ): Promise<GenerateCaptionsAndHashtagsOutput> {
-  return generateCaptionsAndHashtagsFlow(input);
-}
+  const prompt = `You are an expert social media manager. You are generating captions and hashtags for a reel based on the theme or message provided by the user.
 
-const prompt = ai.definePrompt({
-  name: 'generateCaptionsAndHashtagsPrompt',
-  input: {schema: GenerateCaptionsAndHashtagsInputSchema},
-  output: {schema: GenerateCaptionsAndHashtagsOutputSchema},
-  prompt: `You are an expert social media manager. You are generating captions and hashtags for a reel based on the theme or message provided by the user.
+Theme/Message: ${input.themeOrMessage}
 
-  Theme/Message: {{{themeOrMessage}}}
+Generate 3 emotion-based captions and 5 trending hashtags related to the reel.
+Return the result as a valid JSON object matching this structure:
+{
+  "captions": ["caption1", ...],
+  "hashtags": ["#tag1", ...]
+}`;
 
-  Generate 3 emotion-based captions and 5 trending hashtags related to the reel.
-  `,
-});
+  const completion = await openrouter.chat.completions.create({
+    model: "google/gemini-flash-1.5",
+    messages: [
+      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "user", content: prompt }
+    ],
+    response_format: { type: "json_object" }
+  });
 
-const generateCaptionsAndHashtagsFlow = ai.defineFlow(
-  {
-    name: 'generateCaptionsAndHashtagsFlow',
-    inputSchema: GenerateCaptionsAndHashtagsInputSchema,
-    outputSchema: GenerateCaptionsAndHashtagsOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+  const content = completion.choices[0].message.content;
+  if (!content) {
+    throw new Error("No content generated");
   }
-);
+
+  try {
+    const result = JSON.parse(content);
+    return GenerateCaptionsAndHashtagsOutputSchema.parse(result);
+  } catch (error) {
+    console.error("Failed to parse captions/hashtags output:", content, error);
+    throw new Error("Failed to parse generated content.");
+  }
+}

@@ -8,8 +8,8 @@
  * - GenerateReelScriptOutput - The return type for the generateReelScript function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { openrouter } from '@/ai/openrouter';
+import { z } from 'zod';
 
 const GenerateReelScriptInputSchema = z.object({
   subjectMatter: z.string().describe('The subject matter of the reel.'),
@@ -24,24 +24,36 @@ const GenerateReelScriptOutputSchema = z.object({
 export type GenerateReelScriptOutput = z.infer<typeof GenerateReelScriptOutputSchema>;
 
 export async function generateReelScript(input: GenerateReelScriptInput): Promise<GenerateReelScriptOutput> {
-  return generateReelScriptFlow(input);
-}
+  const prompt = `You are a creative reel script writer. Generate a script for a reel based on the provided subject matter, reel length, and language.
 
-const prompt = ai.definePrompt({
-  name: 'generateReelScriptPrompt',
-  input: {schema: GenerateReelScriptInputSchema},
-  output: {schema: GenerateReelScriptOutputSchema},
-  prompt: `You are a creative reel script writer. Generate a script for a reel based on the provided subject matter, reel length, and language.\n\nSubject Matter: {{{subjectMatter}}}\nReel Length: {{{reelLength}}}\nLanguage: {{{language}}}\n\nScript:`,
-});
+Subject Matter: ${input.subjectMatter}
+Reel Length: ${input.reelLength}
+Language: ${input.language}
 
-const generateReelScriptFlow = ai.defineFlow(
-  {
-    name: 'generateReelScriptFlow',
-    inputSchema: GenerateReelScriptInputSchema,
-    outputSchema: GenerateReelScriptOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+Return the result as a valid JSON object matching this structure:
+{
+  "script": "The full script text..."
+}`;
+
+  const completion = await openrouter.chat.completions.create({
+    model: "google/gemini-flash-1.5",
+    messages: [
+      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "user", content: prompt }
+    ],
+    response_format: { type: "json_object" }
+  });
+
+  const content = completion.choices[0].message.content;
+  if (!content) {
+    throw new Error("No content generated");
   }
-);
+
+  try {
+    const result = JSON.parse(content);
+    return GenerateReelScriptOutputSchema.parse(result);
+  } catch (error) {
+    console.error("Failed to parse reel script output:", content, error);
+    throw new Error("Failed to parse generated script.");
+  }
+}

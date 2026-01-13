@@ -8,8 +8,8 @@
  * - GenerateCallToActionsOutput - The return type for the generateCallToActions function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { openrouter } from '@/ai/openrouter';
+import { z } from 'zod';
 
 const GenerateCallToActionsInputSchema = z.object({
   reelContent: z.string().describe('The content of the reel.'),
@@ -24,28 +24,35 @@ export type GenerateCallToActionsOutput = z.infer<typeof GenerateCallToActionsOu
 export async function generateCallToActions(
   input: GenerateCallToActionsInput
 ): Promise<GenerateCallToActionsOutput> {
-  return generateCallToActionsFlow(input);
-}
+  const prompt = `You are an expert in creating engaging content for social media reels. Based on the reel content provided, generate a list of compelling calls to action to encourage viewers to interact with the reel.
 
-const prompt = ai.definePrompt({
-  name: 'generateCallToActionsPrompt',
-  input: {schema: GenerateCallToActionsInputSchema},
-  output: {schema: GenerateCallToActionsOutputSchema},
-  prompt: `You are an expert in creating engaging content for social media reels. Based on the reel content provided, generate a list of compelling calls to action to encourage viewers to interact with the reel.
+Reel Content: ${input.reelContent}
 
-Reel Content: {{{reelContent}}}
+Generate at least 5 calls to action.
+Return the result as a valid JSON object matching this structure:
+{
+  "callToActions": ["cta1", "cta2", ...]
+}`;
 
-Calls to Action:`,
-});
+  const completion = await openrouter.chat.completions.create({
+    model: "google/gemini-flash-1.5",
+    messages: [
+      { role: "system", content: "You are a helpful assistant that outputs JSON." },
+      { role: "user", content: prompt }
+    ],
+    response_format: { type: "json_object" }
+  });
 
-const generateCallToActionsFlow = ai.defineFlow(
-  {
-    name: 'generateCallToActionsFlow',
-    inputSchema: GenerateCallToActionsInputSchema,
-    outputSchema: GenerateCallToActionsOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+  const content = completion.choices[0].message.content;
+  if (!content) {
+    throw new Error("No content generated");
   }
-);
+
+  try {
+    const result = JSON.parse(content);
+    return GenerateCallToActionsOutputSchema.parse(result);
+  } catch (error) {
+    console.error("Failed to parse CTA output:", content, error);
+    throw new Error("Failed to parse generated calls to action.");
+  }
+}
