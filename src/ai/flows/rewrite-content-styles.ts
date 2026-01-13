@@ -49,7 +49,7 @@ Return JSON:
 }`;
 
   const completion = await openrouter.chat.completions.create({
-    model: "openai/gpt-4o-mini",
+    model: "google/gemini-2.0-flash-001",
     messages: [
       { role: "system", content: "You are an expert editor. Output JSON only." },
       { role: "user", content: prompt }
