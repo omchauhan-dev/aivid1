@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const result = await streamObject({
       model: model,
       schema: GenerateViralHooksOutputSchema,
-      prompt: `Topic: ${topic}\n\nGenerate 5 viral hooks.`,
+      prompt: `Topic: ${topic}\n\nGenerate 5 viral hooks. Short, punchy, immediate attention grabbers.`,
     });
 
     return result.toTextStreamResponse();

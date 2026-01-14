@@ -99,7 +99,7 @@ export default function ViralHooksPage() {
         </Alert>
       )}
 
-      <OutputList items={validHooks} isLoading={isLoading && validHooks.length === 0} count={5} />
+      <OutputList items={validHooks} isLoading={isLoading} count={5} />
     </div>
   );
 }
