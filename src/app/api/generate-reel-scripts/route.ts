@@ -11,7 +11,10 @@ const GenerateReelScriptInputSchema = z.object({
 });
 
 const GenerateReelScriptOutputSchema = z.object({
-  script: z.string().describe('The generated reel script.'),
+  scenes: z.array(z.object({
+    visual: z.string().describe('Detailed description of the visual scene.'),
+    voiceover: z.string().describe('The voiceover script for this scene.')
+  })).describe('A list of scenes making up the reel.'),
 });
 
 export async function POST(req: Request) {
@@ -22,7 +25,7 @@ export async function POST(req: Request) {
     const result = await streamObject({
       model: model,
       schema: GenerateReelScriptOutputSchema,
-      prompt: `Subject: ${subjectMatter}\nLength: ${reelLength}\nLanguage: ${language}\n\nGenerate a detailed reel script with heavy voiceover and distinct visual scenes. Focus on real, actionable content. Format it with 'SCENE' and 'VOICEOVER' sections.`,
+      prompt: `Subject: ${subjectMatter}\nLength: ${reelLength}\nLanguage: ${language}\n\nGenerate a creative reel script structured as a series of scenes. For each scene, provide a detailed 'visual' description (suitable for image generation) and a 'voiceover' script. The content should be actionable and engaging.`,
     });
 
     return result.toTextStreamResponse();

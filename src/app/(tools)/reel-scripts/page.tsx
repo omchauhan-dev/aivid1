@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Loader2, Sparkles, Terminal } from 'lucide-react';
+import { Loader2, Sparkles, Terminal, Image as ImageIcon } from 'lucide-react';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
 
 import { PageHeader } from '@/components/page-header';
@@ -13,7 +13,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { OutputText } from '@/components/output-text';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const formSchema = z.object({
   subjectMatter: z.string().min(10, 'Please provide more details on the subject.'),
@@ -22,11 +24,16 @@ const formSchema = z.object({
 });
 
 const OutputSchema = z.object({
-  script: z.string(),
+  scenes: z.array(z.object({
+    visual: z.string(),
+    voiceover: z.string(),
+  })),
 });
 
 export default function ReelScriptPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generatingImages, setGeneratingImages] = useState<Record<number, boolean>>({});
+  const [generatedImages, setGeneratedImages] = useState<Record<number, string>>({});
 
   const { object, submit, isLoading, error: aiError } = useObject({
     api: '/api/generate-reel-scripts',
@@ -47,10 +54,33 @@ export default function ReelScriptPage() {
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setGenerationError(null);
+    setGeneratedImages({});
     submit(values);
   }
 
-  const script = object?.script || '';
+  async function generateImage(index: number, visualDescription: string) {
+    if (generatingImages[index]) return;
+
+    setGeneratingImages(prev => ({ ...prev, [index]: true }));
+    try {
+      const res = await fetch('/api/generate-scene-image', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: visualDescription }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setGeneratedImages(prev => ({ ...prev, [index]: data.url }));
+      } else {
+        console.error('Failed to generate image');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGeneratingImages(prev => ({ ...prev, [index]: false }));
+    }
+  }
+
+  const scenes = object?.scenes || [];
 
   return (
     <div>
@@ -145,7 +175,52 @@ export default function ReelScriptPage() {
         </Alert>
       )}
 
-      <OutputText text={script} isLoading={isLoading} />
+      <div className="mt-8 space-y-6">
+        {scenes.map((scene, index) => (
+            <Card key={index} className="overflow-hidden">
+                <CardContent className="p-0 flex flex-col md:flex-row">
+                    {/* Visual Section */}
+                    <div className="flex-1 p-6 border-b md:border-b-0 md:border-r border-border bg-muted/20">
+                        <div className="flex items-center justify-between mb-2">
+                            <Badge variant="outline" className="bg-background">Visual Scene {index + 1}</Badge>
+                            {!generatedImages[index] && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    onClick={() => scene.visual && generateImage(index, scene.visual)}
+                                    disabled={generatingImages[index] || !scene.visual}
+                                >
+                                    {generatingImages[index] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
+                                    Generate Image
+                                </Button>
+                            )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-4">{scene.visual}</p>
+
+                        {generatedImages[index] ? (
+                            <img
+                                src={generatedImages[index]}
+                                alt={`Scene ${index + 1}`}
+                                className="w-full h-auto rounded-md border shadow-sm"
+                            />
+                        ) : generatingImages[index] ? (
+                            <Skeleton className="w-full h-48 rounded-md" />
+                        ) : null}
+                    </div>
+
+                    {/* Voiceover Section */}
+                    <div className="flex-1 p-6">
+                        <Badge variant="secondary" className="mb-2">Voiceover</Badge>
+                        <p className="text-base font-medium leading-relaxed">{scene.voiceover}</p>
+                    </div>
+                </CardContent>
+            </Card>
+        ))}
+        {isLoading && (
+            <Skeleton className="h-48 w-full rounded-lg" />
+        )}
+      </div>
     </div>
   );
 }
