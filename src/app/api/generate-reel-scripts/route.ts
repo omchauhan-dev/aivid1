@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const result = await streamObject({
       model: model,
       schema: GenerateReelScriptOutputSchema,
-      prompt: `Subject: ${subjectMatter}\nLength: ${reelLength}\nLanguage: ${language}\n\nGenerate a creative reel script.`,
+      prompt: `Subject: ${subjectMatter}\nLength: ${reelLength}\nLanguage: ${language}\n\nGenerate a detailed reel script with heavy voiceover and distinct visual scenes. Focus on real, actionable content. Format it with 'SCENE' and 'VOICEOVER' sections.`,
     });
 
     return result.toTextStreamResponse();
