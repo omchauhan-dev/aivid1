@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Loader2, Sparkles, Terminal } from 'lucide-react';
+import { Loader2, Sparkles, Terminal, MessageSquare } from 'lucide-react';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
+import { useEffect, useRef } from 'react';
 
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { OutputList } from '@/components/output-list';
+import { SupportChat } from '@/components/support-chat';
 
 const formSchema = z.object({
   topic: z.string().min(3, {
@@ -26,13 +28,19 @@ const HooksOutputSchema = z.object({
 
 export default function ViralHooksPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { object, submit, isLoading, error: aiError } = useObject({
+  const { object, submit, isLoading, error: aiError, stop } = useObject({
     api: '/api/generate-viral-hooks',
     schema: HooksOutputSchema,
     onError: (error) => {
+      clearTimeout(timeoutRef.current!);
       setGenerationError(error.message || 'An error occurred during generation.');
     },
+    onFinish: () => {
+        clearTimeout(timeoutRef.current!);
+    }
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -44,8 +52,27 @@ export default function ViralHooksPage() {
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setGenerationError(null);
+    setShowChat(false);
+
+    // Set a 20s timeout
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+        if (isLoading) {
+            stop();
+            setGenerationError("Generation timed out. The system is taking longer than expected.");
+            setShowChat(true);
+        }
+    }, 20000);
+
     submit(values);
   }
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const hooks = object?.hooks || [];
   // Ensure we have an array of strings, filtering out undefineds if partial parsing happens oddly (rare but possible)
@@ -93,13 +120,26 @@ export default function ViralHooksPage() {
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>
-            {generationError || 'An error occurred while generating hooks. Please try again.'}
+          <AlertDescription className="flex flex-col gap-2">
+            <p>{generationError || 'An error occurred while generating hooks. Please try again.'}</p>
+            {showChat && (
+                <Button variant="outline" size="sm" className="w-fit" onClick={() => setShowChat(true)}>
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    Chat with Support
+                </Button>
+            )}
           </AlertDescription>
         </Alert>
       )}
 
       <OutputList items={validHooks} isLoading={isLoading} count={5} />
+
+      {showChat && (
+        <SupportChat
+            onClose={() => setShowChat(false)}
+            initialMessage="I'm having trouble generating viral hooks. It timed out."
+        />
+      )}
     </div>
   );
 }
