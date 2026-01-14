@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Loader2, Sparkles, Terminal, Image as ImageIcon } from 'lucide-react';
+import { Loader2, Sparkles, Terminal, Image as ImageIcon, Video as VideoIcon } from 'lucide-react';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
 
 import { PageHeader } from '@/components/page-header';
@@ -32,8 +32,14 @@ const OutputSchema = z.object({
 
 export default function ReelScriptPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Image states
   const [generatingImages, setGeneratingImages] = useState<Record<number, boolean>>({});
   const [generatedImages, setGeneratedImages] = useState<Record<number, string>>({});
+
+  // Video states
+  const [generatingVideos, setGeneratingVideos] = useState<Record<number, boolean>>({});
+  const [generatedVideos, setGeneratedVideos] = useState<Record<number, string>>({});
 
   const { object, submit, isLoading, error: aiError } = useObject({
     api: '/api/generate-reel-scripts',
@@ -55,6 +61,7 @@ export default function ReelScriptPage() {
   function onSubmit(values: z.infer<typeof formSchema>) {
     setGenerationError(null);
     setGeneratedImages({});
+    setGeneratedVideos({});
     submit(values);
   }
 
@@ -77,6 +84,28 @@ export default function ReelScriptPage() {
       console.error(e);
     } finally {
       setGeneratingImages(prev => ({ ...prev, [index]: false }));
+    }
+  }
+
+  async function generateVideo(index: number, visualDescription: string) {
+    if (generatingVideos[index]) return;
+
+    setGeneratingVideos(prev => ({ ...prev, [index]: true }));
+    try {
+      const res = await fetch('/api/generate-scene-video', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: visualDescription }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setGeneratedVideos(prev => ({ ...prev, [index]: data.url }));
+      } else {
+        console.error('Failed to generate video');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGeneratingVideos(prev => ({ ...prev, [index]: false }));
     }
   }
 
@@ -181,24 +210,51 @@ export default function ReelScriptPage() {
                 <CardContent className="p-0 flex flex-col md:flex-row">
                     {/* Visual Section */}
                     <div className="flex-1 p-6 border-b md:border-b-0 md:border-r border-border bg-muted/20">
-                        <div className="flex items-center justify-between mb-2">
-                            <Badge variant="outline" className="bg-background">Visual Scene {index + 1}</Badge>
-                            {!generatedImages[index] && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    onClick={() => scene.visual && generateImage(index, scene.visual)}
-                                    disabled={generatingImages[index] || !scene.visual}
-                                >
-                                    {generatingImages[index] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
-                                    Generate Image
-                                </Button>
-                            )}
+                        <div className="flex flex-col gap-2 mb-4">
+                            <div className="flex items-center justify-between">
+                                <Badge variant="outline" className="bg-background">Visual Scene {index + 1}</Badge>
+                                <div className="flex gap-2">
+                                  {!generatedImages[index] && !generatedVideos[index] && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-xs"
+                                        onClick={() => scene.visual && generateImage(index, scene.visual)}
+                                        disabled={generatingImages[index] || !scene.visual}
+                                    >
+                                        {generatingImages[index] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
+                                        Image
+                                    </Button>
+                                  )}
+                                  {!generatedVideos[index] && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-xs"
+                                        onClick={() => scene.visual && generateVideo(index, scene.visual)}
+                                        disabled={generatingVideos[index] || !scene.visual}
+                                    >
+                                        {generatingVideos[index] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <VideoIcon className="h-3 w-3 mr-1" />}
+                                        Video
+                                    </Button>
+                                  )}
+                                </div>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{scene.visual}</p>
                         </div>
-                        <p className="text-sm text-muted-foreground mb-4">{scene.visual}</p>
 
-                        {generatedImages[index] ? (
+                        {generatedVideos[index] ? (
+                            <video
+                                src={generatedVideos[index]}
+                                controls
+                                className="w-full h-auto rounded-md border shadow-sm"
+                            />
+                        ) : generatingVideos[index] ? (
+                             <div className="w-full h-48 rounded-md bg-muted flex items-center justify-center flex-col gap-2">
+                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">Generating Video...</span>
+                             </div>
+                        ) : generatedImages[index] ? (
                             <img
                                 src={generatedImages[index]}
                                 alt={`Scene ${index + 1}`}
