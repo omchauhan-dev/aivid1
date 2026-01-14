@@ -18,6 +18,7 @@ export async function POST(req: Request) {
       console.error('OPENROUTER_API_KEY is missing');
       return new Response(JSON.stringify({ error: 'Server misconfigured: Missing API Key' }), {
         status: 500,
+        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -33,7 +34,6 @@ export async function POST(req: Request) {
     return result.toTextStreamResponse();
   } catch (error) {
     console.error('Error generating viral hooks:', error);
-    // Return a JSON error that useObject might be able to parse or at least the client can see
     return new Response(JSON.stringify({ error: 'Failed to generate hooks. Please try again.' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }

@@ -4,7 +4,6 @@ import { useChat } from '@ai-sdk/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { X, Send } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
@@ -39,7 +38,7 @@ export function SupportChat({ onClose, initialMessage }: SupportChatProps) {
           <X className="h-4 w-4" />
         </Button>
       </CardHeader>
-      <CardContent className="flex-1 p-0 overflow-hidden">
+      <CardContent className="flex-1 p-0 overflow-hidden bg-background">
         <div className="h-full overflow-y-auto p-3 space-y-3" ref={scrollRef}>
           {messages.map((m) => (
             <div
@@ -52,7 +51,7 @@ export function SupportChat({ onClose, initialMessage }: SupportChatProps) {
                 className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                   m.role === 'user'
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted'
+                    : 'bg-muted text-muted-foreground'
                 }`}
               >
                 {m.content}

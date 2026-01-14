@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Loader2, Sparkles, Terminal, MessageSquare } from 'lucide-react';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
-import { useEffect, useRef } from 'react';
 
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -29,19 +28,31 @@ const HooksOutputSchema = z.object({
 export default function ViralHooksPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { object, submit, isLoading, error: aiError, stop } = useObject({
     api: '/api/generate-viral-hooks',
     schema: HooksOutputSchema,
     onError: (error) => {
-      clearTimeout(timeoutRef.current!);
       setGenerationError(error.message || 'An error occurred during generation.');
     },
-    onFinish: () => {
-        clearTimeout(timeoutRef.current!);
-    }
   });
+
+  // Timeout logic
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    if (isLoading) {
+      timeoutId = setTimeout(() => {
+        stop();
+        setGenerationError("Generation timed out. The system is taking longer than expected.");
+        setShowChat(true);
+      }, 20000);
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isLoading, stop]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -53,29 +64,11 @@ export default function ViralHooksPage() {
   function onSubmit(values: z.infer<typeof formSchema>) {
     setGenerationError(null);
     setShowChat(false);
-
-    // Set a 20s timeout
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-        if (isLoading) {
-            stop();
-            setGenerationError("Generation timed out. The system is taking longer than expected.");
-            setShowChat(true);
-        }
-    }, 20000);
-
     submit(values);
   }
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
   const hooks = object?.hooks || [];
-  // Ensure we have an array of strings, filtering out undefineds if partial parsing happens oddly (rare but possible)
+  // Ensure we have an array of strings, filtering out undefineds if partial parsing happens oddly
   const validHooks = hooks.filter((h): h is string => typeof h === 'string');
 
   return (

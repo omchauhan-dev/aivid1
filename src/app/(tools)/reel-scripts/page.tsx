@@ -5,8 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Loader2, Sparkles, Terminal } from 'lucide-react';
+import { experimental_useObject as useObject } from '@ai-sdk/react';
 
-import { getReelScriptAction } from './actions';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -21,10 +21,20 @@ const formSchema = z.object({
   language: z.enum(['Hinglish', 'Hindi', 'English']),
 });
 
+const OutputSchema = z.object({
+  script: z.string(),
+});
+
 export default function ReelScriptPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [script, setScript] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  const { object, submit, isLoading, error: aiError } = useObject({
+    api: '/api/generate-reel-scripts',
+    schema: OutputSchema,
+    onError: (error) => {
+      setGenerationError(error.message || 'An error occurred during generation.');
+    },
+  });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -35,21 +45,12 @@ export default function ReelScriptPage() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
-    setError(null);
-    setScript('');
-
-    const result = await getReelScriptAction(values);
-
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setScript(result.data || '');
-    }
-    
-    setIsLoading(false);
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    setGenerationError(null);
+    submit(values);
   }
+
+  const script = object?.script || '';
 
   return (
     <div>
@@ -136,11 +137,11 @@ export default function ReelScriptPage() {
         </form>
       </Form>
 
-      {error && (
+      {(aiError || generationError) && (
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{generationError || 'An error occurred while generating script.'}</AlertDescription>
         </Alert>
       )}
 

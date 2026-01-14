@@ -5,8 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Loader2, Sparkles, Terminal } from 'lucide-react';
+import { experimental_useObject as useObject } from '@ai-sdk/react';
 
-import { getRewrittenContentAction } from './actions';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -15,26 +15,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { OutputText } from '@/components/output-text';
 
-const styleValues = ['aggressive', 'calm', 'emotional', 'storytelling', 'authoritative'] as const;
-
 const styles = [
   { value: 'aggressive', label: 'Aggressive' },
   { value: 'calm', label: 'Calm' },
   { value: 'emotional', label: 'Emotional' },
   { value: 'storytelling', label: 'Storytelling' },
   { value: 'authoritative', label: 'Authoritative' },
-];
+] as const;
 
 
 const formSchema = z.object({
   content: z.string().min(10, 'Please enter some content to rewrite.'),
-  style: z.enum(styleValues),
+  style: z.enum(styles.map(s => s.value) as [string, ...string[]]),
+});
+
+const OutputSchema = z.object({
+  rewrittenContent: z.string(),
 });
 
 export default function RewriteToolPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [rewrittenContent, setRewrittenContent] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  const { object, submit, isLoading, error: aiError } = useObject({
+    api: '/api/rewrite-content',
+    schema: OutputSchema,
+    onError: (error) => {
+      setGenerationError(error.message || 'An error occurred during generation.');
+    },
+  });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -44,21 +52,12 @@ export default function RewriteToolPage() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
-    setError(null);
-    setRewrittenContent('');
-
-    const result = await getRewrittenContentAction(values);
-
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setRewrittenContent(result.data || '');
-    }
-    
-    setIsLoading(false);
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    setGenerationError(null);
+    submit(values);
   }
+
+  const rewrittenContent = object?.rewrittenContent || '';
 
   return (
     <div>
@@ -121,11 +120,11 @@ export default function RewriteToolPage() {
         </form>
       </Form>
 
-      {error && (
+      {(aiError || generationError) && (
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{generationError || 'An error occurred while rewriting content.'}</AlertDescription>
         </Alert>
       )}
 

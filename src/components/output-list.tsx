@@ -15,7 +15,7 @@ export function OutputList({ items, isLoading, count = 3 }: OutputListProps) {
   // Calculate how many skeletons to show
   // If loading, show at least 1, or the difference between expected count and current items
   const skeletonsToShow = isLoading
-    ? Math.max(0, count - (items?.length || 0))
+    ? Math.max(1, count - (items?.length || 0))
     : 0;
 
   return (

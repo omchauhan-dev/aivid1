@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const result = await streamText({
       model: model,
       messages: messages,
-      system: "You are a helpful support assistant. The user is experiencing a timeout with the Viral Hook Generator. Apologize for the delay and offer to help them generate hooks manually or answer any other questions."
+      system: "You are a helpful support assistant for the Viral Hook Generator app. The user is likely experiencing a timeout or error. Apologize for the delay and offer to help them generate hooks manually (by asking for their topic) or answer any other questions. Keep responses concise."
     });
 
     return result.toTextStreamResponse();
