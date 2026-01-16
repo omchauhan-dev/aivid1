@@ -126,43 +126,9 @@ export default function ReelScriptPage() {
   }
 
   async function handleGenerateVideoFlow(index: number, visualDescription: string) {
-      // If we already have an image, just go straight to video generation
-      if (generatedImages[index]) {
-          await generateVideo(index, visualDescription, generatedImages[index]);
-          return;
-      }
-
-      // Otherwise, generate image first
-      if (generatingImages[index]) return; // Already generating image
-
-      setGeneratingImages(prev => ({ ...prev, [index]: true }));
-      let newImageUrl = '';
-
-      try {
-        const res = await fetch('/api/generate-scene-image', {
-            method: 'POST',
-            body: JSON.stringify({ prompt: visualDescription }),
-        });
-        const data = await res.json();
-        if (data.url) {
-            setGeneratedImages(prev => ({ ...prev, [index]: data.url }));
-            newImageUrl = data.url;
-        } else {
-            console.error('Failed to generate image');
-            // Stop here if image failed
-            return;
-        }
-      } catch (e) {
-        console.error(e);
-        return;
-      } finally {
-        setGeneratingImages(prev => ({ ...prev, [index]: false }));
-      }
-
-      // If image generation was successful, proceed to video
-      if (newImageUrl) {
-          await generateVideo(index, visualDescription, newImageUrl);
-      }
+      // Direct video generation using Lightricks model (Text-to-Video)
+      // This bypasses the image generation step entirely, satisfying "not generating any image" request
+      await generateVideo(index, visualDescription);
   }
 
   async function generateVoiceover(index: number, text: string) {
