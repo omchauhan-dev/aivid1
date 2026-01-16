@@ -105,9 +105,12 @@ export default function ReelScriptPage() {
 
     setGeneratingVideos(prev => ({ ...prev, [index]: true }));
     try {
+      // Pass the generated image URL if available for Image-to-Video
+      const imageUrl = generatedImages[index];
+
       const res = await fetch('/api/generate-scene-video', {
         method: 'POST',
-        body: JSON.stringify({ prompt: visualDescription }),
+        body: JSON.stringify({ prompt: visualDescription, imageUrl }),
       });
       const data = await res.json();
       if (data.url) {

@@ -1,65 +1,44 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateImage } from 'ai';
 
 export const maxDuration = 60;
-
-// Configure OpenRouter client for image generation
-// Note: Not all OpenRouter models support the standard image generation interface
-// If this fails, we might need a direct fetch implementation.
-// However, trying with a compatible model first.
-const openrouter = createOpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
 
 export async function POST(req: Request) {
   try {
     const { prompt } = await req.json();
 
-    if (!process.env.OPENROUTER_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Missing API Key' }), { status: 500 });
+    if (!process.env.HUGGING_FACE_API_KEY) {
+      return new Response(JSON.stringify({ error: 'Missing HF API Key' }), { status: 500 });
     }
 
-    // Direct fetch to OpenRouter Chat Completions API with an image model
-    // This is often how "image generation" is done on OpenRouter for models like Flux
-    // The response usually contains a markdown image link
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "black-forest-labs/flux-1-schnell",
-        messages: [
-          {
-            role: "user",
-            content: `Generate an image based on this description: ${prompt}`
-          }
-        ]
-      })
-    });
+    // Use Hugging Face Inference API for Flux
+    const response = await fetch(
+      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify({ inputs: prompt }),
+      }
+    );
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.error("OpenRouter Image API Error:", errorText);
-        throw new Error(`OpenRouter API error: ${response.statusText}`);
+        console.error("Hugging Face Image API Error:", errorText);
+        throw new Error(`HF API error: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
+    // The HF Inference API for image models often returns the image binary directly (Blob)
+    const blob = await response.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    // Extract URL from markdown format ![image](url) or just get the URL if plain
-    // Flux on OpenRouter often returns a hosted URL in the content
-    // Regex to find http/https url ending in png/jpg/webp or just a url
-    const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
+    // Convert to Data URL
+    const base64 = buffer.toString('base64');
+    const mimeType = blob.type || 'image/jpeg'; // Default to jpeg if type missing
+    const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    if (urlMatch) {
-        return new Response(JSON.stringify({ url: urlMatch[0] }), { status: 200 });
-    } else {
-        console.error("No URL found in response:", content);
-         return new Response(JSON.stringify({ error: 'Failed to parse image URL' }), { status: 500 });
-    }
+    return new Response(JSON.stringify({ url: dataUrl }), { status: 200 });
 
   } catch (error) {
     console.error('Error generating image:', error);
