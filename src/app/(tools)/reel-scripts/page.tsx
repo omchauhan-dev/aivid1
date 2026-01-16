@@ -100,13 +100,13 @@ export default function ReelScriptPage() {
     }
   }
 
-  async function generateVideo(index: number, visualDescription: string) {
+  async function generateVideo(index: number, visualDescription: string, existingImageUrl?: string) {
     if (generatingVideos[index]) return;
 
     setGeneratingVideos(prev => ({ ...prev, [index]: true }));
     try {
       // Pass the generated image URL if available for Image-to-Video
-      const imageUrl = generatedImages[index];
+      const imageUrl = existingImageUrl || generatedImages[index];
 
       const res = await fetch('/api/generate-scene-video', {
         method: 'POST',
@@ -123,6 +123,46 @@ export default function ReelScriptPage() {
     } finally {
       setGeneratingVideos(prev => ({ ...prev, [index]: false }));
     }
+  }
+
+  async function handleGenerateVideoFlow(index: number, visualDescription: string) {
+      // If we already have an image, just go straight to video generation
+      if (generatedImages[index]) {
+          await generateVideo(index, visualDescription, generatedImages[index]);
+          return;
+      }
+
+      // Otherwise, generate image first
+      if (generatingImages[index]) return; // Already generating image
+
+      setGeneratingImages(prev => ({ ...prev, [index]: true }));
+      let newImageUrl = '';
+
+      try {
+        const res = await fetch('/api/generate-scene-image', {
+            method: 'POST',
+            body: JSON.stringify({ prompt: visualDescription }),
+        });
+        const data = await res.json();
+        if (data.url) {
+            setGeneratedImages(prev => ({ ...prev, [index]: data.url }));
+            newImageUrl = data.url;
+        } else {
+            console.error('Failed to generate image');
+            // Stop here if image failed
+            return;
+        }
+      } catch (e) {
+        console.error(e);
+        return;
+      } finally {
+        setGeneratingImages(prev => ({ ...prev, [index]: false }));
+      }
+
+      // If image generation was successful, proceed to video
+      if (newImageUrl) {
+          await generateVideo(index, visualDescription, newImageUrl);
+      }
   }
 
   async function generateVoiceover(index: number, text: string) {
@@ -267,27 +307,15 @@ export default function ReelScriptPage() {
                                 Scene {currentSceneIndex + 1} / {totalScenes}
                             </Badge>
                             <div className="flex gap-2">
-                                {!generatedImages[currentSceneIndex] && !generatedVideos[currentSceneIndex] && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-8 text-xs bg-background"
-                                        onClick={() => currentScene.visual && generateImage(currentSceneIndex, currentScene.visual)}
-                                        disabled={generatingImages[currentSceneIndex] || !currentScene.visual}
-                                    >
-                                        {generatingImages[currentSceneIndex] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
-                                        Create Image
-                                    </Button>
-                                )}
                                 {!generatedVideos[currentSceneIndex] && (
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="h-8 text-xs bg-background"
-                                        onClick={() => currentScene.visual && generateVideo(currentSceneIndex, currentScene.visual)}
-                                        disabled={generatingVideos[currentSceneIndex] || !currentScene.visual}
+                                        onClick={() => handleGenerateVideoFlow(currentSceneIndex, currentScene.visual)}
+                                        disabled={generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex] || !currentScene.visual}
                                     >
-                                        {generatingVideos[currentSceneIndex] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <VideoIcon className="h-3 w-3 mr-1" />}
+                                        {(generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex]) ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <VideoIcon className="h-3 w-3 mr-1" />}
                                         Create Video
                                     </Button>
                                 )}
