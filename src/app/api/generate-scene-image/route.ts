@@ -9,9 +9,9 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: 'Missing HF API Key' }), { status: 500 });
     }
 
-    // Use Hugging Face Inference API for Flux
+    // Use Hugging Face Inference API for SDXL 1.0
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+      "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
       {
         headers: {
           Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,

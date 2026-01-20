@@ -273,6 +273,18 @@ export default function ReelScriptPage() {
                                 Scene {currentSceneIndex + 1} / {totalScenes}
                             </Badge>
                             <div className="flex gap-2">
+                                {!generatedImages[currentSceneIndex] && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs bg-background"
+                                        onClick={() => currentScene.visual && generateImage(currentSceneIndex, currentScene.visual)}
+                                        disabled={generatingImages[currentSceneIndex] || !currentScene.visual}
+                                    >
+                                        {generatingImages[currentSceneIndex] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
+                                        Create Image
+                                    </Button>
+                                )}
                                 {!generatedVideos[currentSceneIndex] && (
                                     <Button
                                         variant="outline"
