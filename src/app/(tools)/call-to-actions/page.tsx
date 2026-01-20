@@ -5,8 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Loader2, Sparkles, Terminal } from 'lucide-react';
+import { experimental_useObject as useObject } from '@ai-sdk/react';
 
-import { getCallToActionsAction } from './actions';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -18,10 +18,20 @@ const formSchema = z.object({
   reelContent: z.string().min(10, 'Please provide more details on your reel content.'),
 });
 
+const CTAsOutputSchema = z.object({
+  callToActions: z.array(z.string()),
+});
+
 export default function CallToActionsPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [ctas, setCtas] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  const { object, submit, isLoading, error: aiError } = useObject({
+    api: '/api/generate-call-to-actions',
+    schema: CTAsOutputSchema,
+    onError: (error) => {
+      setGenerationError(error.message || 'An error occurred during generation.');
+    },
+  });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -30,21 +40,13 @@ export default function CallToActionsPage() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
-    setError(null);
-    setCtas([]);
-
-    const result = await getCallToActionsAction(values);
-
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setCtas(result.data || []);
-    }
-    
-    setIsLoading(false);
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    setGenerationError(null);
+    submit(values);
   }
+
+  const ctas = object?.callToActions || [];
+  const validCtas = ctas.filter((c): c is string => typeof c === 'string');
 
   return (
     <div>
@@ -85,15 +87,15 @@ export default function CallToActionsPage() {
         </form>
       </Form>
 
-      {error && (
+      {(aiError || generationError) && (
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{generationError || 'An error occurred while generating CTAs.'}</AlertDescription>
         </Alert>
       )}
 
-      <OutputList items={ctas} isLoading={isLoading} count={4} />
+      <OutputList items={validCtas} isLoading={isLoading} count={5} />
     </div>
   );
 }

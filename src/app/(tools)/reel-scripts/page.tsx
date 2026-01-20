@@ -4,16 +4,18 @@ import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Loader2, Sparkles, Terminal } from 'lucide-react';
+import { Loader2, Sparkles, Terminal, Image as ImageIcon, Video as VideoIcon, Mic, Play, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
+import { experimental_useObject as useObject } from '@ai-sdk/react';
 
-import { getReelScriptAction } from './actions';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { OutputText } from '@/components/output-text';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const formSchema = z.object({
   subjectMatter: z.string().min(10, 'Please provide more details on the subject.'),
@@ -21,10 +23,51 @@ const formSchema = z.object({
   language: z.enum(['Hinglish', 'Hindi', 'English']),
 });
 
+const OutputSchema = z.object({
+  scenes: z.array(z.object({
+    visual: z.string(),
+    voiceover: z.string(),
+  })),
+});
+
 export default function ReelScriptPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [script, setScript] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Navigation State
+  const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
+
+  // Image states
+  const [generatingImages, setGeneratingImages] = useState<Record<number, boolean>>({});
+  const [generatedImages, setGeneratedImages] = useState<Record<number, string>>({});
+
+  // Video states
+  const [generatingVideos, setGeneratingVideos] = useState<Record<number, boolean>>({});
+  const [generatedVideos, setGeneratedVideos] = useState<Record<number, string>>({});
+
+  // Voiceover states
+  const [generatingVoiceovers, setGeneratingVoiceovers] = useState<Record<number, boolean>>({});
+  const [generatedVoiceovers, setGeneratedVoiceovers] = useState<Record<number, string>>({});
+
+  const { object, submit, isLoading, error: aiError } = useObject({
+    api: '/api/generate-reel-scripts',
+    schema: OutputSchema,
+    onError: (error) => {
+      setGenerationError(error.message || 'An error occurred during generation.');
+    },
+    onFinish: ({ object }) => {
+        // Reset navigation to start
+        setCurrentSceneIndex(0);
+
+        // Auto-generate images for all scenes
+        if (object?.scenes) {
+            object.scenes.forEach((scene, index) => {
+                if (scene.visual) {
+                    generateImage(index, scene.visual);
+                }
+            });
+        }
+    }
+  });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -35,21 +78,105 @@ export default function ReelScriptPage() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
-    setError(null);
-    setScript('');
-
-    const result = await getReelScriptAction(values);
-
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setScript(result.data || '');
-    }
-    
-    setIsLoading(false);
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    setGenerationError(null);
+    setGeneratedImages({});
+    setGeneratedVideos({});
+    setGeneratedVoiceovers({});
+    setCurrentSceneIndex(0);
+    submit(values);
   }
+
+  async function generateImage(index: number, visualDescription: string) {
+    if (generatingImages[index]) return;
+
+    setGeneratingImages(prev => ({ ...prev, [index]: true }));
+    try {
+      const res = await fetch('/api/generate-scene-image', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: visualDescription }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setGeneratedImages(prev => ({ ...prev, [index]: data.url }));
+      } else {
+        console.error('Failed to generate image');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGeneratingImages(prev => ({ ...prev, [index]: false }));
+    }
+  }
+
+  async function generateVideo(index: number, visualDescription: string, existingImageUrl?: string) {
+    if (generatingVideos[index]) return;
+
+    setGeneratingVideos(prev => ({ ...prev, [index]: true }));
+    try {
+      // Pass the generated image URL if available for Image-to-Video
+      const imageUrl = existingImageUrl || generatedImages[index];
+
+      const res = await fetch('/api/generate-scene-video', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: visualDescription, imageUrl }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setGeneratedVideos(prev => ({ ...prev, [index]: data.url }));
+      } else {
+        console.error('Failed to generate video');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGeneratingVideos(prev => ({ ...prev, [index]: false }));
+    }
+  }
+
+  async function handleGenerateVideoFlow(index: number, visualDescription: string) {
+      // Direct video generation using Lightricks model (Text-to-Video)
+      // This bypasses the image generation step entirely, satisfying "not generating any image" request
+      await generateVideo(index, visualDescription);
+  }
+
+  async function generateVoiceover(index: number, text: string) {
+    if (generatingVoiceovers[index]) return;
+
+    setGeneratingVoiceovers(prev => ({ ...prev, [index]: true }));
+    try {
+      const res = await fetch('/api/generate-voiceover', {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      });
+
+      if (!res.ok) throw new Error('Failed to generate voiceover');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setGeneratedVoiceovers(prev => ({ ...prev, [index]: url }));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGeneratingVoiceovers(prev => ({ ...prev, [index]: false }));
+    }
+  }
+
+  const scenes = object?.scenes || [];
+  const currentScene = scenes[currentSceneIndex];
+  const totalScenes = scenes.length;
+
+  const nextScene = () => {
+    if (currentSceneIndex < totalScenes - 1) {
+        setCurrentSceneIndex(prev => prev + 1);
+    }
+  };
+
+  const prevScene = () => {
+    if (currentSceneIndex > 0) {
+        setCurrentSceneIndex(prev => prev - 1);
+    }
+  };
 
   return (
     <div>
@@ -136,15 +263,151 @@ export default function ReelScriptPage() {
         </form>
       </Form>
 
-      {error && (
+      {(aiError || generationError) && (
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{generationError || 'An error occurred while generating script.'}</AlertDescription>
         </Alert>
       )}
 
-      <OutputText text={script} isLoading={isLoading} />
+      {scenes.length > 0 && currentScene && (
+        <div className="mt-8">
+            <Card className="overflow-hidden min-h-[450px] shadow-md border-2">
+                <CardContent className="p-0 flex flex-col md:flex-row h-full">
+                    {/* Visual Section (Left) */}
+                    <div className="flex-1 p-6 border-b md:border-b-0 md:border-r border-border bg-muted/20 flex flex-col">
+                        <div className="flex items-center justify-between mb-4">
+                            <Badge variant="outline" className="bg-background text-sm font-medium">
+                                Scene {currentSceneIndex + 1} / {totalScenes}
+                            </Badge>
+                            <div className="flex gap-2">
+                                {!generatedImages[currentSceneIndex] && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs bg-background"
+                                        onClick={() => currentScene.visual && generateImage(currentSceneIndex, currentScene.visual)}
+                                        disabled={generatingImages[currentSceneIndex] || !currentScene.visual}
+                                    >
+                                        {generatingImages[currentSceneIndex] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
+                                        Create Image
+                                    </Button>
+                                )}
+                                {!generatedVideos[currentSceneIndex] && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs bg-background"
+                                        onClick={() => handleGenerateVideoFlow(currentSceneIndex, currentScene.visual)}
+                                        disabled={generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex] || !currentScene.visual}
+                                    >
+                                        {(generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex]) ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <VideoIcon className="h-3 w-3 mr-1" />}
+                                        Create Video
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground mb-4 italic">{currentScene.visual}</p>
+
+                        <div className="flex-1 flex items-center justify-center min-h-[250px] bg-background/50 rounded-lg border border-dashed">
+                            {generatedVideos[currentSceneIndex] ? (
+                                <video
+                                    src={generatedVideos[currentSceneIndex]}
+                                    controls
+                                    className="w-full h-auto rounded-md max-h-[350px]"
+                                />
+                            ) : generatingVideos[currentSceneIndex] ? (
+                                    <div className="flex flex-col items-center gap-2">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                    <span className="text-xs text-muted-foreground">Generating Video...</span>
+                                    </div>
+                            ) : generatedImages[currentSceneIndex] ? (
+                                <img
+                                    src={generatedImages[currentSceneIndex]}
+                                    alt={`Scene ${currentSceneIndex + 1}`}
+                                    className="w-full h-auto rounded-md max-h-[350px] object-cover shadow-sm"
+                                />
+                            ) : generatingImages[currentSceneIndex] ? (
+                                <div className="flex flex-col items-center gap-2">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                    <span className="text-xs text-muted-foreground">Generating Image...</span>
+                                </div>
+                            ) : (
+                                <div className="text-center p-4 text-muted-foreground text-sm">
+                                    <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                    <span>Visual content area</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Voiceover Section (Right) */}
+                    <div className="flex-1 p-6 flex flex-col bg-card">
+                        <div className="flex items-center justify-between mb-4">
+                            <Badge variant="secondary" className="text-sm">Voiceover Script</Badge>
+                        </div>
+
+                        <div className="flex-1 p-4 bg-muted/10 rounded-md border mb-4">
+                            <p className="text-lg font-medium leading-relaxed">{currentScene.voiceover}</p>
+                        </div>
+
+                        <div className="space-y-4 mt-auto">
+                            {!generatedVoiceovers[currentSceneIndex] ? (
+                                <Button
+                                    className="w-full"
+                                    onClick={() => currentScene.voiceover && generateVoiceover(currentSceneIndex, currentScene.voiceover)}
+                                    disabled={generatingVoiceovers[currentSceneIndex] || !currentScene.voiceover}
+                                >
+                                    {generatingVoiceovers[currentSceneIndex] ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mic className="h-4 w-4 mr-2" />}
+                                    Generate Voiceover
+                                </Button>
+                            ) : (
+                                <div className="p-3 bg-secondary/20 rounded-md border flex flex-col gap-2">
+                                    <span className="text-xs font-semibold uppercase text-muted-foreground">Audio Generated</span>
+                                    <audio controls src={generatedVoiceovers[currentSceneIndex]} className="w-full h-10" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Navigation Controls */}
+            <div className="flex items-center justify-center gap-6 mt-6">
+                <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={prevScene}
+                    disabled={currentSceneIndex === 0}
+                    className="w-32"
+                >
+                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
+                </Button>
+
+                <span className="text-sm font-medium text-muted-foreground">
+                    Scene {currentSceneIndex + 1} of {totalScenes}
+                </span>
+
+                <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={nextScene}
+                    disabled={currentSceneIndex === totalScenes - 1}
+                    className="w-32"
+                >
+                    Next <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+            </div>
+        </div>
+      )}
+
+      {isLoading && scenes.length === 0 && (
+           <div className="mt-8 space-y-6">
+                <Skeleton className="h-[450px] w-full rounded-lg" />
+           </div>
+      )}
     </div>
   );
 }
