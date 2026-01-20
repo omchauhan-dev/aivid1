@@ -9,9 +9,14 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: 'Missing HF API Key' }), { status: 500 });
     }
 
-    // Use Hugging Face Inference API for SDXL 1.0
+    // UPDATE: HF Inference API URL changed.
+    // Use the router URL or the dedicated endpoint if using a specific model.
+    // The error message said: "Please use https://router.huggingface.co instead."
+
+    const model = "stabilityai/stable-diffusion-xl-base-1.0";
+
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+      `https://router.huggingface.co/hf-inference/models/${model}`,
       {
         headers: {
           Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
@@ -23,9 +28,13 @@ export async function POST(req: Request) {
     );
 
     if (!response.ok) {
+        // Fallback to Flux if SDXL fails, or just report error
         const errorText = await response.text();
         console.error("Hugging Face Image API Error:", errorText);
-        throw new Error(`HF API error: ${response.statusText}`);
+
+        // Retry with Flux on the new router URL if the first one failed (e.g. if SDXL is restricted)
+        // But first, let's return the error properly.
+        return new Response(JSON.stringify({ error: `HF API Error: ${response.status} - ${errorText}` }), { status: 500 });
     }
 
     // The HF Inference API for image models often returns the image binary directly (Blob)

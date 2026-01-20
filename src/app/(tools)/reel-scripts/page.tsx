@@ -1,19 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { 
-  Loader2, 
-  Sparkles, 
-  Terminal, 
-  Image as ImageIcon, 
-  Video as VideoIcon, 
-  Mic, 
-  ChevronLeft, 
-  ChevronRight 
-} from 'lucide-react';
+import { Loader2, Sparkles, Terminal, Image as ImageIcon, Video as VideoIcon, Mic, Play, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
 
 import { PageHeader } from '@/components/page-header';
@@ -34,8 +25,8 @@ const formSchema = z.object({
 
 const OutputSchema = z.object({
   scenes: z.array(z.object({
-    visual: z.string().optional(),
-    voiceover: z.string().optional(),
+    visual: z.string(),
+    voiceover: z.string(),
   })),
 });
 
@@ -57,32 +48,23 @@ export default function ReelScriptPage() {
   const [generatingVoiceovers, setGeneratingVoiceovers] = useState<Record<number, boolean>>({});
   const [generatedVoiceovers, setGeneratedVoiceovers] = useState<Record<number, string>>({});
 
-  // FIX: Memory Cleanup Hook
-  // This ensures that when the component unmounts or state changes, 
-  // we release the memory used by the audio blobs.
-  useEffect(() => {
-    return () => {
-      Object.values(generatedVoiceovers).forEach((url) => {
-        if (url) URL.revokeObjectURL(url);
-      });
-    };
-  }, [generatedVoiceovers]);
-
   const { object, submit, isLoading, error: aiError } = useObject({
     api: '/api/generate-reel-scripts',
     schema: OutputSchema,
     onError: (error) => {
       setGenerationError(error.message || 'An error occurred during generation.');
     },
-    onFinish: async ({ object }) => {
+    onFinish: ({ object }) => {
         // Reset navigation to start
         setCurrentSceneIndex(0);
 
-        // FIX: Thundering Herd Prevention
-        // Instead of firing 10 API calls instantly, we only auto-generate 
-        // the first image to make the UI feel snappy without killing the server.
-        if (object?.scenes && object.scenes[0]?.visual) {
-           await generateImage(0, object.scenes[0].visual);
+        // Auto-generate images for all scenes
+        if (object?.scenes) {
+            object.scenes.forEach((scene, index) => {
+                if (scene.visual) {
+                    generateImage(index, scene.visual);
+                }
+            });
         }
     }
   });
@@ -98,10 +80,6 @@ export default function ReelScriptPage() {
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setGenerationError(null);
-    
-    // Cleanup old audio URLs before clearing state
-    Object.values(generatedVoiceovers).forEach(url => URL.revokeObjectURL(url));
-    
     setGeneratedImages({});
     setGeneratedVideos({});
     setGeneratedVoiceovers({});
@@ -136,18 +114,12 @@ export default function ReelScriptPage() {
 
     setGeneratingVideos(prev => ({ ...prev, [index]: true }));
     try {
-      // FIX: Ensure we are explicit about whether we have an image or not
-      // If we are doing Text-to-Video, existingImageUrl should be undefined.
+      // Pass the generated image URL if available for Image-to-Video
       const imageUrl = existingImageUrl || generatedImages[index];
 
       const res = await fetch('/api/generate-scene-video', {
         method: 'POST',
-        // If imageUrl is undefined, JSON.stringify removes it (if strict) or sends null. 
-        // Best to be explicit.
-        body: JSON.stringify({ 
-            prompt: visualDescription, 
-            imageUrl: imageUrl || undefined 
-        }),
+        body: JSON.stringify({ prompt: visualDescription, imageUrl }),
       });
       const data = await res.json();
       if (data.url) {
@@ -162,9 +134,9 @@ export default function ReelScriptPage() {
     }
   }
 
-  // FIX: Simplified the video handler logic
   async function handleGenerateVideoFlow(index: number, visualDescription: string) {
-      // This bypasses the image generation step entirely (Text-to-Video)
+      // Direct video generation using Lightricks model (Text-to-Video)
+      // This bypasses the image generation step entirely, satisfying "not generating any image" request
       await generateVideo(index, visualDescription);
   }
 
@@ -181,12 +153,6 @@ export default function ReelScriptPage() {
       if (!res.ok) throw new Error('Failed to generate voiceover');
 
       const blob = await res.blob();
-      
-      // Revoke existing URL for this index if re-generating
-      if (generatedVoiceovers[index]) {
-          URL.revokeObjectURL(generatedVoiceovers[index]);
-      }
-
       const url = URL.createObjectURL(blob);
       setGeneratedVoiceovers(prev => ({ ...prev, [index]: url }));
     } catch (e) {
@@ -316,7 +282,6 @@ export default function ReelScriptPage() {
                                 Scene {currentSceneIndex + 1} / {totalScenes}
                             </Badge>
                             <div className="flex gap-2">
-                                {/* Image Generation Button */}
                                 {!generatedImages[currentSceneIndex] && (
                                     <Button
                                         variant="outline"
@@ -329,13 +294,12 @@ export default function ReelScriptPage() {
                                         Create Image
                                     </Button>
                                 )}
-                                {/* Video Generation Button */}
                                 {!generatedVideos[currentSceneIndex] && (
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="h-8 text-xs bg-background"
-                                        onClick={() => handleGenerateVideoFlow(currentSceneIndex, currentScene.visual || '')}
+                                        onClick={() => handleGenerateVideoFlow(currentSceneIndex, currentScene.visual)}
                                         disabled={generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex] || !currentScene.visual}
                                     >
                                         {(generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex]) ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <VideoIcon className="h-3 w-3 mr-1" />}
@@ -345,12 +309,8 @@ export default function ReelScriptPage() {
                             </div>
                         </div>
 
-                        {/* Visual Description */}
-                        <p className="text-sm text-muted-foreground mb-4 italic min-h-[3rem]">
-                            {currentScene.visual || 'Waiting for visual description...'}
-                        </p>
+                        <p className="text-sm text-muted-foreground mb-4 italic">{currentScene.visual}</p>
 
-                        {/* Media Display Area */}
                         <div className="flex-1 flex items-center justify-center min-h-[250px] bg-background/50 rounded-lg border border-dashed">
                             {generatedVideos[currentSceneIndex] ? (
                                 <video
@@ -390,9 +350,7 @@ export default function ReelScriptPage() {
                         </div>
 
                         <div className="flex-1 p-4 bg-muted/10 rounded-md border mb-4">
-                            <p className="text-lg font-medium leading-relaxed">
-                                {currentScene.voiceover || 'Waiting for script...'}
-                            </p>
+                            <p className="text-lg font-medium leading-relaxed">{currentScene.voiceover}</p>
                         </div>
 
                         <div className="space-y-4 mt-auto">

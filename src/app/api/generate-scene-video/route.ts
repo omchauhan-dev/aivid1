@@ -15,15 +15,11 @@ export async function POST(req: Request) {
     let model = "Lightricks/LTX-Video";
     let body: any = { inputs: prompt };
 
-    // If we have an image, we can try to use it if the model supports it,
-    // BUT the user said "not generating any image", so likely we are in T2V mode.
-    // If imageUrl IS passed, we *could* try to use it, but given the user complaint,
-    // let's prioritize the text-to-video flow using Lightricks.
-
-    // Note: Lightricks/LTX-Video on HF Inference API accepts JSON with inputs string.
+    // Check if we need to update the endpoint URL for video as well
+    // https://api-inference.huggingface.co might be deprecated here too.
 
     const response = await fetch(
-        `https://api-inference.huggingface.co/models/${model}`,
+        `https://router.huggingface.co/hf-inference/models/${model}`,
         {
             headers: {
                 Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
