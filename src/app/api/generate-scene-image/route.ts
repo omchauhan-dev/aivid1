@@ -1,58 +1,63 @@
+import { NextResponse } from 'next/server';
 
-export const maxDuration = 60;
+// 1. FIX: Updated URL from "api-inference" to "router"
+const MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0";
+const API_URL = `https://router.huggingface.co/hf-inference/models/${MODEL_ID}`;
 
 export async function POST(req: Request) {
   try {
-    const { prompt } = await req.json();
-
-    if (!process.env.HUGGING_FACE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Missing HF API Key' }), { status: 500 });
+    if (!process.env.HUGGING_FACE_TOKEN) {
+      return NextResponse.json({ error: 'Missing HUGGING_FACE_TOKEN in .env.local' }, { status: 500 });
     }
 
-    // UPDATE: HF Inference API URL changed.
-    // Use the router URL or the dedicated endpoint if using a specific model.
-    // The error message said: "Please use https://router.huggingface.co instead."
+    const body = await req.json();
+    const { prompt } = body;
 
-    const model = "stabilityai/stable-diffusion-xl-base-1.0";
+    if (!prompt) {
+      return NextResponse.json({ error: 'No prompt provided' }, { status: 400 });
+    }
 
-    const response = await fetch(
-      `https://router.huggingface.co/hf-inference/models/${model}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-        body: JSON.stringify({ inputs: prompt }),
-      }
-    );
+    console.log(`[HF] Generating image for: "${prompt.substring(0, 30)}..."`);
+
+    const response = await fetch(API_URL, {
+      headers: {
+        Authorization: `Bearer ${process.env.HUGGING_FACE_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+      body: JSON.stringify({ inputs: prompt }),
+    });
 
     if (!response.ok) {
-        // Fallback to Flux if SDXL fails, or just report error
-        const errorText = await response.text();
-        console.error("Hugging Face Image API Error:", errorText);
-
-        // Retry with Flux on the new router URL if the first one failed (e.g. if SDXL is restricted)
-        // But first, let's return the error properly.
-        return new Response(JSON.stringify({ error: `HF API Error: ${response.status} - ${errorText}` }), { status: 500 });
+      const errorText = await response.text();
+      console.error("[HF] API Error:", errorText);
+      return NextResponse.json(
+        { error: `Hugging Face Error: ${response.status} - ${errorText}` }, 
+        { status: response.status }
+      );
     }
 
-    // The HF Inference API for image models often returns the image binary directly (Blob)
-    const blob = await response.blob();
-    const arrayBuffer = await blob.arrayBuffer();
+    // Handle "Model is loading" edge case
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+        const json = await response.json();
+        if (json.error && json.error.includes("loading")) {
+            return NextResponse.json({ error: "Model is warming up, please try again in 30 seconds." }, { status: 503 });
+        }
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    const base64Image = buffer.toString('base64');
+    const dataUrl = `data:image/jpeg;base64,${base64Image}`;
 
-    // Convert to Data URL
-    const base64 = buffer.toString('base64');
-    const mimeType = blob.type || 'image/jpeg'; // Default to jpeg if type missing
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    return NextResponse.json({ url: dataUrl });
 
-    return new Response(JSON.stringify({ url: dataUrl }), { status: 200 });
-
-  } catch (error) {
-    console.error('Error generating image:', error);
-    return new Response(JSON.stringify({ error: 'Failed to generate image.' }), {
-      status: 500,
-    });
+  } catch (error: any) {
+    console.error("[HF] Server Crash:", error);
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: 500 }
+    );
   }
 }
