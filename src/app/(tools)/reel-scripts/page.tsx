@@ -1,13 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react'; // Added useEffect, useRef
+import { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Loader2, Sparkles, Terminal, Image as ImageIcon, Video as VideoIcon, Mic, ChevronLeft, ChevronRight } from 'lucide-react';
+import { 
+  Loader2, 
+  Sparkles, 
+  Terminal, 
+  Image as ImageIcon, 
+  Video as VideoIcon, 
+  Mic, 
+  ChevronLeft, 
+  ChevronRight 
+} from 'lucide-react';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
 
-// ... Imports for UI components ...
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -26,28 +34,37 @@ const formSchema = z.object({
 
 const OutputSchema = z.object({
   scenes: z.array(z.object({
-    visual: z.string().optional(), // Mark optional for streaming safety
+    visual: z.string().optional(),
     voiceover: z.string().optional(),
   })),
 });
 
 export default function ReelScriptPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Navigation State
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
 
+  // Image states
   const [generatingImages, setGeneratingImages] = useState<Record<number, boolean>>({});
   const [generatedImages, setGeneratedImages] = useState<Record<number, string>>({});
 
+  // Video states
   const [generatingVideos, setGeneratingVideos] = useState<Record<number, boolean>>({});
   const [generatedVideos, setGeneratedVideos] = useState<Record<number, string>>({});
 
+  // Voiceover states
   const [generatingVoiceovers, setGeneratingVoiceovers] = useState<Record<number, boolean>>({});
   const [generatedVoiceovers, setGeneratedVoiceovers] = useState<Record<number, string>>({});
 
-  // 1. FIX: Cleanup memory leaks for Audio URLs
+  // FIX: Memory Cleanup Hook
+  // This ensures that when the component unmounts or state changes, 
+  // we release the memory used by the audio blobs.
   useEffect(() => {
     return () => {
-      Object.values(generatedVoiceovers).forEach((url) => URL.revokeObjectURL(url));
+      Object.values(generatedVoiceovers).forEach((url) => {
+        if (url) URL.revokeObjectURL(url);
+      });
     };
   }, [generatedVoiceovers]);
 
@@ -58,12 +75,12 @@ export default function ReelScriptPage() {
       setGenerationError(error.message || 'An error occurred during generation.');
     },
     onFinish: async ({ object }) => {
-        // Reset navigation
+        // Reset navigation to start
         setCurrentSceneIndex(0);
 
-        // 2. FIX: Avoid Thundering Herd. 
-        // Either don't auto-generate, or do it sequentially with a small delay
-        // Here we will just generate the FIRST scene's image to save API costs/load
+        // FIX: Thundering Herd Prevention
+        // Instead of firing 10 API calls instantly, we only auto-generate 
+        // the first image to make the UI feel snappy without killing the server.
         if (object?.scenes && object.scenes[0]?.visual) {
            await generateImage(0, object.scenes[0].visual);
         }
@@ -81,11 +98,12 @@ export default function ReelScriptPage() {
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     setGenerationError(null);
-    // Note: We intentionally clear state here to prepare for new generation
+    
+    // Cleanup old audio URLs before clearing state
+    Object.values(generatedVoiceovers).forEach(url => URL.revokeObjectURL(url));
+    
     setGeneratedImages({});
     setGeneratedVideos({});
-    // Revoke old URLs before clearing state
-    Object.values(generatedVoiceovers).forEach(url => URL.revokeObjectURL(url));
     setGeneratedVoiceovers({});
     setCurrentSceneIndex(0);
     submit(values);
@@ -103,6 +121,8 @@ export default function ReelScriptPage() {
       const data = await res.json();
       if (data.url) {
         setGeneratedImages(prev => ({ ...prev, [index]: data.url }));
+      } else {
+        console.error('Failed to generate image');
       }
     } catch (e) {
       console.error(e);
@@ -116,25 +136,36 @@ export default function ReelScriptPage() {
 
     setGeneratingVideos(prev => ({ ...prev, [index]: true }));
     try {
-      // 3. FIX: Be explicit about Image-to-Video vs Text-to-Video
+      // FIX: Ensure we are explicit about whether we have an image or not
+      // If we are doing Text-to-Video, existingImageUrl should be undefined.
       const imageUrl = existingImageUrl || generatedImages[index];
-      
+
       const res = await fetch('/api/generate-scene-video', {
         method: 'POST',
+        // If imageUrl is undefined, JSON.stringify removes it (if strict) or sends null. 
+        // Best to be explicit.
         body: JSON.stringify({ 
             prompt: visualDescription, 
-            imageUrl: imageUrl || undefined // Ensure undefined is sent if empty
+            imageUrl: imageUrl || undefined 
         }),
       });
       const data = await res.json();
       if (data.url) {
         setGeneratedVideos(prev => ({ ...prev, [index]: data.url }));
+      } else {
+        console.error('Failed to generate video');
       }
     } catch (e) {
       console.error(e);
     } finally {
       setGeneratingVideos(prev => ({ ...prev, [index]: false }));
     }
+  }
+
+  // FIX: Simplified the video handler logic
+  async function handleGenerateVideoFlow(index: number, visualDescription: string) {
+      // This bypasses the image generation step entirely (Text-to-Video)
+      await generateVideo(index, visualDescription);
   }
 
   async function generateVoiceover(index: number, text: string) {
@@ -150,10 +181,12 @@ export default function ReelScriptPage() {
       if (!res.ok) throw new Error('Failed to generate voiceover');
 
       const blob = await res.blob();
-      // Revoke previous URL for this specific index if it exists
+      
+      // Revoke existing URL for this index if re-generating
       if (generatedVoiceovers[index]) {
           URL.revokeObjectURL(generatedVoiceovers[index]);
       }
+
       const url = URL.createObjectURL(blob);
       setGeneratedVoiceovers(prev => ({ ...prev, [index]: url }));
     } catch (e) {
@@ -168,11 +201,15 @@ export default function ReelScriptPage() {
   const totalScenes = scenes.length;
 
   const nextScene = () => {
-    if (currentSceneIndex < totalScenes - 1) setCurrentSceneIndex(prev => prev + 1);
+    if (currentSceneIndex < totalScenes - 1) {
+        setCurrentSceneIndex(prev => prev + 1);
+    }
   };
 
   const prevScene = () => {
-    if (currentSceneIndex > 0) setCurrentSceneIndex(prev => prev - 1);
+    if (currentSceneIndex > 0) {
+        setCurrentSceneIndex(prev => prev - 1);
+    }
   };
 
   return (
@@ -184,73 +221,122 @@ export default function ReelScriptPage() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-             {/* ... Form Fields remain same ... */}
-             {/* Snipped for brevity, your form code was fine */}
-             
-             <div className="flex gap-4">
-                {/* Wrapped button in div just for layout safety */}
-                <Button type="submit" disabled={isLoading} size="lg">
-                    {isLoading ? (
-                    <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                    </>
-                    ) : (
-                    <>
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Generate Script
-                    </>
-                    )}
-                </Button>
-             </div>
+          <FormField
+            control={form.control}
+            name="subjectMatter"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Subject Matter</FormLabel>
+                <FormControl>
+                  <Textarea placeholder="Describe the topic or idea for your reel..." {...field} rows={4} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <FormField
+              control={form.control}
+              name="reelLength"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Reel Length</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select reel length" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="15s">15 seconds</SelectItem>
+                      <SelectItem value="30s">30 seconds</SelectItem>
+                      <SelectItem value="60s">60 seconds</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="language"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Language</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="English">English</SelectItem>
+                      <SelectItem value="Hinglish">Hinglish</SelectItem>
+                      <SelectItem value="Hindi">Hindi</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <Button type="submit" disabled={isLoading} size="lg">
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate Script
+              </>
+            )}
+          </Button>
         </form>
       </Form>
 
-      {/* Error Handling */}
       {(aiError || generationError) && (
         <Alert variant="destructive" className="mt-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{generationError || 'An error occurred.'}</AlertDescription>
+          <AlertDescription>{generationError || 'An error occurred while generating script.'}</AlertDescription>
         </Alert>
       )}
 
-      {/* Main Content Area */}
       {scenes.length > 0 && currentScene && (
         <div className="mt-8">
             <Card className="overflow-hidden min-h-[450px] shadow-md border-2">
                 <CardContent className="p-0 flex flex-col md:flex-row h-full">
-                    
-                    {/* Visual Section */}
+                    {/* Visual Section (Left) */}
                     <div className="flex-1 p-6 border-b md:border-b-0 md:border-r border-border bg-muted/20 flex flex-col">
                         <div className="flex items-center justify-between mb-4">
                             <Badge variant="outline" className="bg-background text-sm font-medium">
                                 Scene {currentSceneIndex + 1} / {totalScenes}
                             </Badge>
                             <div className="flex gap-2">
-                                {/* Image Button */}
+                                {/* Image Generation Button */}
                                 {!generatedImages[currentSceneIndex] && (
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="h-8 text-xs bg-background"
-                                        // 4. FIX: Optional chaining for safety
-                                        onClick={() => currentScene?.visual && generateImage(currentSceneIndex, currentScene.visual)}
-                                        disabled={generatingImages[currentSceneIndex] || !currentScene?.visual}
+                                        onClick={() => currentScene.visual && generateImage(currentSceneIndex, currentScene.visual)}
+                                        disabled={generatingImages[currentSceneIndex] || !currentScene.visual}
                                     >
                                         {generatingImages[currentSceneIndex] ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
                                         Create Image
                                     </Button>
                                 )}
-                                {/* Video Button */}
+                                {/* Video Generation Button */}
                                 {!generatedVideos[currentSceneIndex] && (
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="h-8 text-xs bg-background"
-                                        // 5. FIX: Logic for video generation call
-                                        onClick={() => currentScene?.visual && generateVideo(currentSceneIndex, currentScene.visual)}
-                                        disabled={generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex] || !currentScene?.visual}
+                                        onClick={() => handleGenerateVideoFlow(currentSceneIndex, currentScene.visual || '')}
+                                        disabled={generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex] || !currentScene.visual}
                                     >
                                         {(generatingVideos[currentSceneIndex] || generatingImages[currentSceneIndex]) ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <VideoIcon className="h-3 w-3 mr-1" />}
                                         Create Video
@@ -259,52 +345,106 @@ export default function ReelScriptPage() {
                             </div>
                         </div>
 
+                        {/* Visual Description */}
                         <p className="text-sm text-muted-foreground mb-4 italic min-h-[3rem]">
-                            {currentScene?.visual || "Generating visual description..."}
+                            {currentScene.visual || 'Waiting for visual description...'}
                         </p>
 
-                         {/* ... Video/Image Render Logic (Your original code was mostly fine here) ... */}
-                         {/* Just make sure to use currentScene?.visual checks everywhere */}
-                         <div className="flex-1 flex items-center justify-center min-h-[250px] bg-background/50 rounded-lg border border-dashed">
-                             {/* ... Render logic ... */}
-                             {generatedVideos[currentSceneIndex] ? (
-                                <video src={generatedVideos[currentSceneIndex]} controls className="w-full h-auto rounded-md" />
-                             ) : generatedImages[currentSceneIndex] ? (
-                                <img src={generatedImages[currentSceneIndex]} alt="Scene" className="w-full h-auto rounded-md" />
-                             ) : (
-                                <div className="text-center p-4 text-muted-foreground"><ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50"/>Visual area</div>
-                             )}
-                         </div>
+                        {/* Media Display Area */}
+                        <div className="flex-1 flex items-center justify-center min-h-[250px] bg-background/50 rounded-lg border border-dashed">
+                            {generatedVideos[currentSceneIndex] ? (
+                                <video
+                                    src={generatedVideos[currentSceneIndex]}
+                                    controls
+                                    className="w-full h-auto rounded-md max-h-[350px]"
+                                />
+                            ) : generatingVideos[currentSceneIndex] ? (
+                                    <div className="flex flex-col items-center gap-2">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                    <span className="text-xs text-muted-foreground">Generating Video...</span>
+                                    </div>
+                            ) : generatedImages[currentSceneIndex] ? (
+                                <img
+                                    src={generatedImages[currentSceneIndex]}
+                                    alt={`Scene ${currentSceneIndex + 1}`}
+                                    className="w-full h-auto rounded-md max-h-[350px] object-cover shadow-sm"
+                                />
+                            ) : generatingImages[currentSceneIndex] ? (
+                                <div className="flex flex-col items-center gap-2">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                    <span className="text-xs text-muted-foreground">Generating Image...</span>
+                                </div>
+                            ) : (
+                                <div className="text-center p-4 text-muted-foreground text-sm">
+                                    <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                    <span>Visual content area</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    {/* Voiceover Section */}
+                    {/* Voiceover Section (Right) */}
                     <div className="flex-1 p-6 flex flex-col bg-card">
-                        {/* ... */}
+                        <div className="flex items-center justify-between mb-4">
+                            <Badge variant="secondary" className="text-sm">Voiceover Script</Badge>
+                        </div>
+
                         <div className="flex-1 p-4 bg-muted/10 rounded-md border mb-4">
                             <p className="text-lg font-medium leading-relaxed">
-                                {currentScene?.voiceover || "Generating script..."}
+                                {currentScene.voiceover || 'Waiting for script...'}
                             </p>
                         </div>
-                        {/* ... */}
-                    </div>
 
+                        <div className="space-y-4 mt-auto">
+                            {!generatedVoiceovers[currentSceneIndex] ? (
+                                <Button
+                                    className="w-full"
+                                    onClick={() => currentScene.voiceover && generateVoiceover(currentSceneIndex, currentScene.voiceover)}
+                                    disabled={generatingVoiceovers[currentSceneIndex] || !currentScene.voiceover}
+                                >
+                                    {generatingVoiceovers[currentSceneIndex] ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mic className="h-4 w-4 mr-2" />}
+                                    Generate Voiceover
+                                </Button>
+                            ) : (
+                                <div className="p-3 bg-secondary/20 rounded-md border flex flex-col gap-2">
+                                    <span className="text-xs font-semibold uppercase text-muted-foreground">Audio Generated</span>
+                                    <audio controls src={generatedVoiceovers[currentSceneIndex]} className="w-full h-10" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 
-            {/* Navigation Controls - kept your logic */}
+            {/* Navigation Controls */}
             <div className="flex items-center justify-center gap-6 mt-6">
-                <Button variant="outline" size="lg" onClick={prevScene} disabled={currentSceneIndex === 0}>
+                <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={prevScene}
+                    disabled={currentSceneIndex === 0}
+                    className="w-32"
+                >
                     <ChevronLeft className="h-4 w-4 mr-2" /> Previous
                 </Button>
-                <span className="text-sm font-medium text-muted-foreground">Scene {currentSceneIndex + 1} of {totalScenes}</span>
-                <Button variant="outline" size="lg" onClick={nextScene} disabled={currentSceneIndex === totalScenes - 1}>
-                     Next <ChevronRight className="h-4 w-4 ml-2" />
+
+                <span className="text-sm font-medium text-muted-foreground">
+                    Scene {currentSceneIndex + 1} of {totalScenes}
+                </span>
+
+                <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={nextScene}
+                    disabled={currentSceneIndex === totalScenes - 1}
+                    className="w-32"
+                >
+                    Next <ChevronRight className="h-4 w-4 ml-2" />
                 </Button>
             </div>
         </div>
       )}
 
-      {/* Skeleton Loader - Checks both loading AND empty scenes */}
       {isLoading && scenes.length === 0 && (
            <div className="mt-8 space-y-6">
                 <Skeleton className="h-[450px] w-full rounded-lg" />
