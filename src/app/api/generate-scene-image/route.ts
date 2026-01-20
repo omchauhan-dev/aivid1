@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     const response = await fetch(API_URL, {
       headers: {
-        Authorization: `Bearer ${process.env.HUGGING_FACE_TOKEN}`,
+        Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
         "Content-Type": "application/json",
       },
       method: "POST",
