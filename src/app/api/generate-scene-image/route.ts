@@ -6,7 +6,7 @@ const API_URL = `https://router.huggingface.co/hf-inference/models/${MODEL_ID}`;
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.HUGGING_FACE_TOKEN) {
+    if (!process.env.HUGGING_FACE_API_KEY) {
       return NextResponse.json({ error: 'Missing HUGGING_FACE_TOKEN in .env.local' }, { status: 500 });
     }
 
