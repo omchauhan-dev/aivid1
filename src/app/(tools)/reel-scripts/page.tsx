@@ -54,9 +54,18 @@ export default function ReelScriptPage() {
     onError: (error) => {
       setGenerationError(error.message || 'An error occurred during generation.');
     },
-    onFinish: () => {
-        // Reset navigation to start when new generation finishes (optional)
+    onFinish: ({ object }) => {
+        // Reset navigation to start
         setCurrentSceneIndex(0);
+
+        // Auto-generate images for all scenes
+        if (object?.scenes) {
+            object.scenes.forEach((scene, index) => {
+                if (scene.visual) {
+                    generateImage(index, scene.visual);
+                }
+            });
+        }
     }
   });
 
