@@ -32,6 +32,7 @@ const OutputSchema = z.object({
 
 export default function ReelScriptPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [selectedImageModel, setSelectedImageModel] = useState<string>('flux');
 
   // Navigation State
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
@@ -94,7 +95,7 @@ export default function ReelScriptPage() {
     try {
       const res = await fetch('/api/generate-scene-image', {
         method: 'POST',
-        body: JSON.stringify({ prompt: visualDescription }),
+        body: JSON.stringify({ prompt: visualDescription, model: selectedImageModel }),
       });
       const data = await res.json();
       if (data.url) {
@@ -282,6 +283,26 @@ export default function ReelScriptPage() {
                                 Scene {currentSceneIndex + 1} / {totalScenes}
                             </Badge>
                             <div className="flex gap-2">
+                                <div className="flex items-center gap-1">
+                                    <Select
+                                        defaultValue="flux"
+                                        onValueChange={(val) => {
+                                            // Store selected model in a ref or state if needed,
+                                            // for now we'll just pass it to generateImage if we refactor,
+                                            // but to keep it simple let's assume this updates a state 'selectedImageModel'
+                                            setSelectedImageModel(val);
+                                        }}
+                                    >
+                                        <SelectTrigger className="h-8 w-[110px] text-xs">
+                                            <SelectValue placeholder="Model" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="flux">Flux.1</SelectItem>
+                                            <SelectItem value="sdxl">SDXL 1.0</SelectItem>
+                                            <SelectItem value="sdxl-turbo">SDXL Turbo</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 {!generatedImages[currentSceneIndex] && (
                                     <Button
                                         variant="outline"

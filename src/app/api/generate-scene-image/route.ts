@@ -1,63 +1,59 @@
-import { NextResponse } from 'next/server';
 
-// 1. FIX: Updated URL from "api-inference" to "router"
-const MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0";
-const API_URL = `https://router.huggingface.co/hf-inference/models/${MODEL_ID}`;
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
+    const { prompt, model: requestedModel } = await req.json();
+
     if (!process.env.HUGGING_FACE_API_KEY) {
-      return NextResponse.json({ error: 'Missing HUGGING_FACE_TOKEN in .env.local' }, { status: 500 });
+      return new Response(JSON.stringify({ error: 'Missing HF API Key' }), { status: 500 });
     }
 
-    const body = await req.json();
-    const { prompt } = body;
+    // Determine model to use. Default to SDXL Base if not specified, but support overrides.
+    // User requested SDXL Turbo support.
+    let model = "stabilityai/stable-diffusion-xl-base-1.0";
 
-    if (!prompt) {
-      return NextResponse.json({ error: 'No prompt provided' }, { status: 400 });
+    if (requestedModel === 'sdxl-turbo') {
+        model = "stabilityai/sdxl-turbo";
+    } else if (requestedModel === 'flux') {
+        model = "black-forest-labs/FLUX.1-schnell";
+    } else if (requestedModel) {
+        // Allow passing full model ID if advanced user
+        model = requestedModel;
     }
 
-    console.log(`[HF] Generating image for: "${prompt.substring(0, 30)}..."`);
-
-    const response = await fetch(API_URL, {
-      headers: {
-        Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      body: JSON.stringify({ inputs: prompt }),
-    });
+    const response = await fetch(
+      `https://router.huggingface.co/hf-inference/models/${model}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify({ inputs: prompt }),
+      }
+    );
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[HF] API Error:", errorText);
-      return NextResponse.json(
-        { error: `Hugging Face Error: ${response.status} - ${errorText}` }, 
-        { status: response.status }
-      );
+        const errorText = await response.text();
+        console.error(`Hugging Face Image API Error (${model}):`, errorText);
+        return new Response(JSON.stringify({ error: `HF API Error: ${response.status} - ${errorText}` }), { status: 500 });
     }
 
-    // Handle "Model is loading" edge case
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("application/json")) {
-        const json = await response.json();
-        if (json.error && json.error.includes("loading")) {
-            return NextResponse.json({ error: "Model is warming up, please try again in 30 seconds." }, { status: 503 });
-        }
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
+    const blob = await response.blob();
+    const arrayBuffer = await blob.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const base64Image = buffer.toString('base64');
-    const dataUrl = `data:image/jpeg;base64,${base64Image}`;
 
-    return NextResponse.json({ url: dataUrl });
+    const base64 = buffer.toString('base64');
+    const mimeType = blob.type || 'image/jpeg';
+    const dataUrl = `data:${mimeType};base64,${base64}`;
 
-  } catch (error: any) {
-    console.error("[HF] Server Crash:", error);
-    return NextResponse.json(
-      { error: error.message || 'Internal Server Error' },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({ url: dataUrl }), { status: 200 });
+
+  } catch (error) {
+    console.error('Error generating image:', error);
+    return new Response(JSON.stringify({ error: 'Failed to generate image.' }), {
+      status: 500,
+    });
   }
 }
