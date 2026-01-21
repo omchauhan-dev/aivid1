@@ -3,56 +3,39 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const { prompt, model: requestedModel } = await req.json();
+    const { prompt } = await req.json();
 
-    if (!process.env.HUGGING_FACE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Missing HF API Key' }), { status: 500 });
-    }
+    // URL of the local Python service
+    // We assume it's running on localhost:8000
+    const LOCAL_SERVICE_URL = process.env.LOCAL_PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
 
-    // Determine model to use. Default to SDXL Base if not specified, but support overrides.
-    // User requested SDXL Turbo support.
-    let model = "stabilityai/stable-diffusion-xl-base-1.0";
-
-    if (requestedModel === 'sdxl-turbo') {
-        model = "stabilityai/sdxl-turbo";
-    } else if (requestedModel === 'flux') {
-        model = "black-forest-labs/FLUX.1-schnell";
-    } else if (requestedModel) {
-        // Allow passing full model ID if advanced user
-        model = requestedModel;
-    }
-
-    const response = await fetch(
-      `https://router.huggingface.co/hf-inference/models/${model}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-        body: JSON.stringify({ inputs: prompt }),
-      }
-    );
+    const response = await fetch(`${LOCAL_SERVICE_URL}/generate-image`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+          prompt,
+          num_inference_steps: 1,
+          guidance_scale: 0.0
+      }),
+    });
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Hugging Face Image API Error (${model}):`, errorText);
-        return new Response(JSON.stringify({ error: `HF API Error: ${response.status} - ${errorText}` }), { status: 500 });
+        console.error("Local Python Service Error:", errorText);
+        throw new Error(`Local Python Service error: ${response.statusText} - ${errorText}`);
     }
 
-    const blob = await response.blob();
-    const arrayBuffer = await blob.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const base64 = buffer.toString('base64');
-    const mimeType = blob.type || 'image/jpeg';
-    const dataUrl = `data:${mimeType};base64,${base64}`;
-
-    return new Response(JSON.stringify({ url: dataUrl }), { status: 200 });
+    const data = await response.json();
+    return new Response(JSON.stringify({ url: data.url }), { status: 200 });
 
   } catch (error) {
-    console.error('Error generating image:', error);
-    return new Response(JSON.stringify({ error: 'Failed to generate image.' }), {
+    console.error('Error calling local generation service:', error);
+    // Suggest the user to check the python server
+    return new Response(JSON.stringify({
+        error: 'Failed to connect to local generation service. Please ensure the Python backend is running on port 8000.'
+    }), {
       status: 500,
     });
   }
